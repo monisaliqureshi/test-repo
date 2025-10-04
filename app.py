@@ -1,7 +1,7 @@
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException, Depends, Header, Response
 from fastapi.responses import PlainTextResponse
@@ -42,7 +42,7 @@ class CreateClientRequest(BaseModel):
     overwrite: bool = False               # if True, revoke/remove existing and re-create
 
 # ====== Helpers ======
-def run(cmd: list[str], cwd: Optional[Path] = None) -> str:
+def run(cmd: List[str], cwd: Optional[Path] = None) -> str:
     try:
         res = subprocess.run(
             cmd,
