@@ -172,7 +172,7 @@ def create_client(req: CreateClientRequest):
 
     return {"message": "Client created", "name": name}
 
-@app.get("/clients/{name}.ovpn", response_class=PlainTextResponse, dependencies=[Depends(require_token)])
+@app.get("/clients/{name}.ovpn", response_class=PlainTextResponse)
 def get_ovpn(name: str, override_host: Optional[str] = None, override_port: Optional[int] = None, proto: Optional[str] = None):
     """Download an inline .ovpn; you can override host/port via query params."""
     global REMOTE_HOST, REMOTE_PORT, REMOTE_PROTO
