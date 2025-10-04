@@ -1,28 +1,27 @@
-# Use the official Outline Shadowbox image
-FROM quay.io/outline/shadowbox:stable
+# You can base on the OpenVPN image so Easy-RSA and dirs are present,
+# or on a slim base and mount /etc/openvpn from your OpenVPN container.
+FROM kylemanna/openvpn:latest
 
-# Make sure we have openssl (works for Alpine or Debian/Ubuntu bases)
-SHELL ["/bin/sh", "-c"]
-RUN set -eux; \
-  if command -v apk >/dev/null 2>&1; then \
-    apk add --no-cache openssl ca-certificates; \
-  elif command -v apt-get >/dev/null 2>&1; then \
-    apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*; \
-  else \
-    echo "No supported package manager found to install openssl" >&2; exit 1; \
-  fi
+# Install Python + FastAPI runtime
+RUN apk add --no-cache python3 py3-pip && \
+    pip3 install --no-cache-dir fastapi==0.115.0 "uvicorn[standard]==0.30.6" pydantic==2.9.2
 
-# Reasonable defaults (can be overridden at deploy time)
-ENV SB_API_PORT=443 \
-    SB_STATE_DIR=/opt/outline/persisted-state \
-    SB_CERTIFICATE_FILE=/tmp/shadowbox.crt \
-    SB_PRIVATE_KEY_FILE=/tmp/shadowbox.key
+# Copy app
+WORKDIR /opt/ovpn-api
+COPY app.py /opt/ovpn-api/app.py
 
-# Add a tiny entrypoint that prepares certs + config, then runs shadowbox
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+# Defaults: adjust via env at deploy time
+ENV OVPN_DIR=/etc/openvpn \
+    EASYRSA_BIN=/usr/share/easy-rsa/easyrsa \
+    OVPN_REMOTE_HOST=yourservice-12345.proxy.koyeb.app \
+    OVPN_REMOTE_PORT=443 \
+    OVPN_REMOTE_PROTO=tcp \
+    OVPN_TLS_AUTH=true \
+    OVPN_TLS_CRYPT=false \
+    API_TOKEN=change-me
 
-EXPOSE 443 80 21350
+EXPOSE 8000/tcp
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# Start API
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 
