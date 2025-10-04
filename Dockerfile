@@ -13,7 +13,7 @@ RUN set -eux; \
   fi
 
 # Reasonable defaults (can be overridden at deploy time)
-ENV SB_API_PORT=443 \
+ENV SB_API_PORT=21350 \
     SB_STATE_DIR=/opt/outline/persisted-state \
     SB_CERTIFICATE_FILE=/tmp/shadowbox.crt \
     SB_PRIVATE_KEY_FILE=/tmp/shadowbox.key
@@ -22,7 +22,7 @@ ENV SB_API_PORT=443 \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-EXPOSE 443 80
+EXPOSE 443 80 21350
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
