@@ -1,62 +1,32 @@
 #!/bin/sh
-set -eu
+set -e
 
-: "${SB_STATE_DIR:=/opt/outline/persisted-state}"
-: "${SB_CERTIFICATE_FILE:=/tmp/shadowbox.crt}"
-: "${SB_PRIVATE_KEY_FILE:=/tmp/shadowbox.key}"
-: "${SB_API_PORT:=443}"
+: "${OVPN_REMOTE_HOST:?OVPN_REMOTE_HOST is required (public proxy host, e.g. xyz.proxy.koyeb.app)}"
+: "${OVPN_REMOTE_PORT:=443}"          # public proxy port (Koyeb-assigned)
+: "${OVPN_REMOTE_PROTO:=tcp}"         # Koyeb is TCP-only
+: "${OVPN_LISTEN_PORT:=443}"          # container's OpenVPN listen port
 
-# Determine hostname for config & cert CN:
-# Prefer KOYEB_APP_DOMAIN if present, else SB_HOSTNAME, else system hostname
-HOST="${KOYEB_APP_DOMAIN:-${SB_HOSTNAME:-$(hostname -f 2>/dev/null || hostname)}}"
+# Initialize config + PKI on first boot
+if [ ! -f /etc/openvpn/pki/ca.crt ]; then
+  echo "[init] Generating server config and PKI..."
+  ovpn_genconfig -u "${OVPN_REMOTE_PROTO}://${OVPN_REMOTE_HOST}:${OVPN_REMOTE_PORT}"
 
+  # Force TCP and desired listen port in server config (kylemanna uses openvpn.conf)
+  if [ -f /etc/openvpn/openvpn.conf ]; then
+    sed -i 's/^proto .*/proto tcp/' /etc/openvpn/openvpn.conf
+    sed -i "s/^port .*/port ${OVPN_LISTEN_PORT}/" /etc/openvpn/openvpn.conf
+  elif [ -f /etc/openvpn/server.conf ]; then
+    sed -i 's/^proto .*/proto tcp/' /etc/openvpn/server.conf
+    sed -i "s/^port .*/port ${OVPN_LISTEN_PORT}/" /etc/openvpn/server.conf
+  fi
 
-# Start a tiny HTTP helper on port 80:
-# - GET /health  -> 200 OK (for Koyeb HTTP health check)
-# - any other    -> 301 to https://HOST/<same path>
-node -e '
-  const http = require("http");
-  const host = process.env.KOYEB_APP_DOMAIN || process.env.SB_HOSTNAME || require("os").hostname();
-  const srv = http.createServer((req, res) => {
-    if (req.url === "/health") {
-      res.writeHead(200, {"Content-Type":"text/plain"});
-      return res.end("ok");
-    }
-    const location = "https://" + host + req.url;
-    res.writeHead(301, {"Location": location, "Connection":"close"});
-    res.end();
-  });
-  srv.listen(80, () => console.log("HTTP helper on :80 (health OK, redirect -> https)"));
-' &
-
-# Generate API prefix if not provided (so it's stable if you set it in env)
-if [ -z "${SB_API_PREFIX:-}" ]; then
-  SB_API_PREFIX="$(cat /proc/sys/kernel/random/uuid)"
-  export SB_API_PREFIX
+  EASYRSA_BATCH=1 EASYRSA_REQ_CN="${OVPN_REMOTE_HOST}" ovpn_initpki nopass
+  # Ensure tls-auth key exists (belt & suspenders)
+  [ -f /etc/openvpn/ta.key ] || openvpn --genkey --secret /etc/openvpn/ta.key
 fi
 
-# Prepare state dir
-mkdir -p "$SB_STATE_DIR"
+echo "[run] starting openvpn on tcp/${OVPN_LISTEN_PORT} ..."
+ovpn_run &
 
-# Create a self-signed cert if not already present (ephemeral on Koyeb Free)
-if [ ! -s "$SB_CERTIFICATE_FILE" ] || [ ! -s "$SB_PRIVATE_KEY_FILE" ]; then
-  openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
-    -keyout "$SB_PRIVATE_KEY_FILE" \
-    -out    "$SB_CERTIFICATE_FILE" \
-    -subj "/CN=${HOST}"
-fi
-
-# Write the required Shadowbox server config (hostname + single-port rollout)
-cat > "$SB_STATE_DIR/shadowbox_server_config.json" <<EOF
-{"rollouts":[{"id":"single-port","enabled":true}],"portForNewAccessKeys":${SB_API_PORT},"hostname":"${HOST}"}
-EOF
-
-# Print helpful connection info to logs (so you can copy into Outline Manager)
-CERT_SHA256="$(openssl x509 -in "$SB_CERTIFICATE_FILE" -noout -fingerprint -sha256 | sed 's/^SHA256 Fingerprint=//; s/://g;')"
-echo "== Outline Manager setup =="
-echo "apiUrl: https://${HOST}:${SB_API_PORT}/${SB_API_PREFIX}"
-echo "certSha256: ${CERT_SHA256}"
-echo "==========================="
-
-# Run Shadowbox
-exec node /opt/outline-server/app/main.js
+echo "[run] starting FastAPI ..."
+exec uvicorn app:app --host 0.0.0.0 --port 8000
