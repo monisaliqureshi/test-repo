@@ -4,7 +4,7 @@ FROM kylemanna/openvpn:latest
 
 # Install Python + FastAPI runtime
 RUN apk add --no-cache python3 py3-pip && \
-    pip3 install --no-cache-dir fastapi==0.115.0 "uvicorn[standard]==0.30.6" pydantic==2.9.2
+    pip3 install --no-cache-dir fastapi "uvicorn[standard]" pydantic
 
 # Copy app
 WORKDIR /opt/ovpn-api
