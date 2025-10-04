@@ -129,7 +129,7 @@ verb 3
 def healthz():
     return {"status": "ok"}
 
-@app.post("/clients", dependencies=[Depends(require_token)])
+@app.post("/clients")
 def create_client(req: CreateClientRequest):
     ensure_paths()
     name = req.name.strip()
