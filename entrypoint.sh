@@ -10,6 +10,25 @@ set -eu
 # Prefer KOYEB_APP_DOMAIN if present, else SB_HOSTNAME, else system hostname
 HOST="${KOYEB_APP_DOMAIN:-${SB_HOSTNAME:-$(hostname -f 2>/dev/null || hostname)}}"
 
+
+# Start a tiny HTTP helper on port 80:
+# - GET /health  -> 200 OK (for Koyeb HTTP health check)
+# - any other    -> 301 to https://HOST/<same path>
+node -e '
+  const http = require("http");
+  const host = process.env.KOYEB_APP_DOMAIN || process.env.SB_HOSTNAME || require("os").hostname();
+  const srv = http.createServer((req, res) => {
+    if (req.url === "/health") {
+      res.writeHead(200, {"Content-Type":"text/plain"});
+      return res.end("ok");
+    }
+    const location = "https://" + host + req.url;
+    res.writeHead(301, {"Location": location, "Connection":"close"});
+    res.end();
+  });
+  srv.listen(80, () => console.log("HTTP helper on :80 (health OK, redirect -> https)"));
+' &
+
 # Generate API prefix if not provided (so it's stable if you set it in env)
 if [ -z "${SB_API_PREFIX:-}" ]; then
   SB_API_PREFIX="$(cat /proc/sys/kernel/random/uuid)"
