@@ -13,7 +13,7 @@ RUN set -eux; \
   fi
 
 # Reasonable defaults (can be overridden at deploy time)
-ENV SB_API_PORT=21350 \
+ENV SB_API_PORT=443 \
     SB_STATE_DIR=/opt/outline/persisted-state \
     SB_CERTIFICATE_FILE=/tmp/shadowbox.crt \
     SB_PRIVATE_KEY_FILE=/tmp/shadowbox.key
