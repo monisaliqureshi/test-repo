@@ -122,7 +122,7 @@ verb 3
 {ta_block}
 """
     # cleanup any double blank lines
-    return "\n".join([line for line in (l := template.splitlines())])
+    return "\n".join(template.splitlines()) + "\n"  # ensures trailing newline too
 
 # ====== Endpoints ======
 @app.get("/healthz")
